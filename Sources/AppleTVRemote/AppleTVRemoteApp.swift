@@ -44,6 +44,12 @@ struct AppleTVRemoteApp: App {
         .windowResizability(.automatic)
         .commands {
             CommandGroup(replacing: .newItem) {}
+            CommandGroup(replacing: .appSettings) {
+                Button("Keyboard & Trackpad…") {
+                    KeyboardShortcutsWindowController.shared.show()
+                }
+                .keyboardShortcut(",", modifiers: .command)
+            }
         }
     }
 

@@ -133,6 +133,32 @@ public enum SwipeDirection: CaseIterable, Sendable {
     }
 }
 
+/// Geometry for emulating the Siri Remote clickpad ring (circular jog
+/// gesture) with `_hidT` touch events. A finger travelling round the rim of
+/// the 1000×1000 touch surface is what the physical ring reports.
+public enum RingGesture {
+    public static let center: Double = 500
+    public static let radius: Double = 420
+    /// Largest arc sent as one touch-move; bigger rotations are subdivided so
+    /// the path stays on the rim instead of cutting a chord across the pad.
+    public static let maxStepDegrees: Double = 10
+
+    /// Touch coordinate for `degrees` measured clockwise from 12 o'clock.
+    /// y grows downward, matching `SwipeDirection.coordinates`.
+    public static func point(atDegrees degrees: Double) -> (x: Double, y: Double) {
+        let r = degrees * .pi / 180
+        return (x: center + radius * sin(r), y: center - radius * cos(r))
+    }
+
+    /// Intermediate angles from `from` (exclusive) to `from + delta`
+    /// (inclusive). Positive `delta` is clockwise.
+    public static func angles(from: Double, delta: Double) -> [Double] {
+        guard delta != 0 else { return [] }
+        let n = max(1, Int((abs(delta) / maxStepDegrees).rounded(.up)))
+        return (1...n).map { from + delta * Double($0) / Double(n) }
+    }
+}
+
 // MARK: - Device collection helpers
 
 extension Array where Element == AppleTVDevice {

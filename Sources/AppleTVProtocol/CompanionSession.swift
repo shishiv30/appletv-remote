@@ -188,6 +188,10 @@ public final class CompanionSession {
 
     // MARK: - Remote Commands
 
+    /// Current angle of an in-progress ring gesture; nil when no finger is down.
+    private var ringAngle: Double?
+    private var ringBaseNs: UInt64 = 0
+
     public func send(_ command: RemoteCommand) {
         let keycode = command.hidKeycode
         if command.sendReleaseOnly {
@@ -234,6 +238,40 @@ public final class CompanionSession {
             try? await Task.sleep(for: .milliseconds(50))
             self.sendEncrypted(OPACK.encodeTouchStop(txn: self.nextTxn()))
         }
+    }
+
+    // MARK: - Ring (circular jog) gesture
+
+    /// Put a virtual finger on the clickpad rim at `degrees` (clockwise from
+    /// 12 o'clock). No-op if a ring gesture is already in progress.
+    public func beginRing(atDegrees degrees: Double = 0) {
+        guard ringAngle == nil else { return }
+        ringAngle = degrees
+        ringBaseNs = DispatchTime.now().uptimeNanoseconds
+        sendRingTouch(degrees: degrees, phase: 1)
+    }
+
+    /// Slide the virtual finger round the rim. Positive = clockwise.
+    public func rotateRing(byDegrees delta: Double) {
+        guard let from = ringAngle else { return }
+        for angle in RingGesture.angles(from: from, delta: delta) {
+            sendRingTouch(degrees: angle, phase: 3)
+        }
+        ringAngle = from + delta
+    }
+
+    /// Lift the virtual finger.
+    public func endRing() {
+        guard let angle = ringAngle else { return }
+        sendRingTouch(degrees: angle, phase: 4)
+        ringAngle = nil
+    }
+
+    private func sendRingTouch(degrees: Double, phase: Int) {
+        let pt = RingGesture.point(atDegrees: degrees)
+        sendEncrypted(OPACK.encodeTouchEvent(x: pt.x, y: pt.y, phase: phase,
+                                             txn: nextTxn(),
+                                             nanoseconds: DispatchTime.now().uptimeNanoseconds - ringBaseNs))
     }
 
     // MARK: - Text Input

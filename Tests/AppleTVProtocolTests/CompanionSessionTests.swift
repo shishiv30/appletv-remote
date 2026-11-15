@@ -291,6 +291,59 @@ final class CompanionSessionTests: XCTestCase {
                        "sendSessionInit must register a TV Remote Client session")
     }
 
+    // MARK: - Ring gesture
+
+    func testRingGeometryStartsAtTwelveAndTurnsClockwise() {
+        let top = RingGesture.point(atDegrees: 0)
+        XCTAssertEqual(top.x, 500, accuracy: 0.001)
+        XCTAssertEqual(top.y, 500 - RingGesture.radius, accuracy: 0.001)
+        let right = RingGesture.point(atDegrees: 90)
+        XCTAssertEqual(right.x, 500 + RingGesture.radius, accuracy: 0.001)
+        XCTAssertEqual(right.y, 500, accuracy: 0.001)
+    }
+
+    func testRingAnglesSubdivideLargeRotations() {
+        XCTAssertEqual(RingGesture.angles(from: 0, delta: 0), [])
+        XCTAssertEqual(RingGesture.angles(from: 10, delta: 5), [15])
+        XCTAssertEqual(RingGesture.angles(from: 0, delta: -30), [-10, -20, -30])
+    }
+
+    /// A ring gesture is one touch: press, moves along the rim, release.
+    func testRingGestureEmitsPressMovesRelease() {
+        let (session, peer, decrypt) = makeKeyedSession()
+        defer { session.close(); Darwin.close(peer) }
+
+        session.rotateRing(byDegrees: 20)      // ignored: no finger down yet
+        session.beginRing()
+        session.beginRing()                    // ignored: already down
+        session.rotateRing(byDegrees: 20)
+        session.endRing()
+        session.endRing()                      // ignored: already up
+
+        var buffer = drain(peer)
+        var phases: [Int] = []
+        var points: [(Int, Int)] = []
+        while let frame = try? CompanionFrame.read(from: &buffer) {
+            guard frame.type == .eOPACK,
+                  let plain = try? decrypt.open(frame.payload),
+                  let dict = OPACK.decodeDict(plain),
+                  dict["_i"] as? String == "_hidT",
+                  let c = dict["_c"] as? [String: Any],
+                  let phase = (c["_tPh"] as? NSNumber)?.intValue,
+                  let x = (c["_cx"] as? NSNumber)?.intValue,
+                  let y = (c["_cy"] as? NSNumber)?.intValue
+            else { continue }
+            phases.append(phase)
+            points.append((x, y))
+        }
+
+        XCTAssertEqual(phases, [1, 3, 3, 4])
+        XCTAssertEqual(points.first?.0, 500)
+        XCTAssertEqual(points.first?.1, 500 - Int(RingGesture.radius))
+        // Clockwise from 12 o'clock moves right.
+        XCTAssertGreaterThan(points.last?.0 ?? 0, 500)
+    }
+
     // MARK: - sendText guard
 
     func testSendTextFailsWithNoActiveTextField() {

@@ -19,6 +19,10 @@ struct RemoteControlView: View {
     @State private var keyboardInputText = ""
     @State private var keyboardNotifyTask: Task<Void, Never>?
     @State private var showAppLauncher = false
+    /// Trackpad mode: the MacBook trackpad acts as the Siri Remote touch
+    /// surface (see `TrackpadSurface`).
+    @State private var trackpadMode = false
+    @ObservedObject private var keyBindings = KeyBindingStore.shared
     @FocusState private var pinFocused: Bool
     @FocusState private var keyboardInputFocused: Bool
     @AppStorage("com.adhir.appletv-remote.sidebarCollapsed") private var sidebarCollapsed = false
@@ -162,7 +166,30 @@ struct RemoteControlView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Spacer()
+            Button {
+                KeyboardShortcutsWindowController.shared.show()
+            } label: {
+                Image(systemName: "keyboard")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Keyboard & Trackpad settings (⌘,)")
+            .accessibilityLabel("Keyboard & Trackpad settings")
             if connection.state == .connected {
+                if !showAppLauncher {
+                    Button {
+                        trackpadMode.toggle()
+                    } label: {
+                        Image(systemName: "hand.draw")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(trackpadMode ? Color.accentColor : .secondary)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help(trackpadMode ? "Leave trackpad mode" : "Trackpad mode")
+                }
                 Button {
                     withAnimation(.easeInOut(duration: 0.18)) {
                         showAppLauncher.toggle()
@@ -262,6 +289,43 @@ struct RemoteControlView: View {
         // predicate (not on `connection.nowPlaying != nil`) so a track
         // change between two non-nil values doesn't re-animate.
         .animation(.easeOut(duration: 0.25), value: footerVisible)
+        .overlay {
+            if trackpadMode { trackpadOverlay }
+        }
+        .onDisappear { trackpadMode = false }
+    }
+
+    /// Dimmed overlay shown in trackpad mode. The remote stays visible
+    /// underneath so button flashes still confirm each gesture.
+    private var trackpadOverlay: some View {
+        ZStack(alignment: .bottom) {
+            Color.black.opacity(0.35)
+            TrackpadSurface(
+                onDirection: { cmd in connection.send(cmd); flashKey(cmd) },
+                onRing: { degrees in connection.rotateRing(byDegrees: degrees) },
+                onRingEnd: { connection.endRing() },
+                onClick: { connection.send(.select); flashKey(.select) },
+                onExit: { trackpadMode = false }
+            )
+            VStack(spacing: 4) {
+                Text("Trackpad mode")
+                    .font(.callout.weight(.semibold))
+                Text("Slide: D-pad · Two fingers ↑↓: ring · Click: select")
+                Text(trackpadExitHint)
+            }
+            .font(.caption)
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .padding(12)
+            .allowsHitTesting(false)
+        }
+    }
+
+    private var trackpadExitHint: String {
+        let keys = keyBindings.chords(for: .toggleTrackpad).map(\.display)
+        return (keys + ["right-click"]).joined(separator: " or ") + " to exit"
     }
 
     /// True when the now-playing footer should be on-screen. Mirrors the
@@ -382,7 +446,11 @@ struct RemoteControlView: View {
                                 }
                             },
                             onSwipe: { dir in connection.sendSwipe(dir); flashKeySwipe(dir) },
-                            onShowApps: { withAnimation(.easeInOut(duration: 0.18)) { showAppLauncher = true } },
+                            onShowApps: {
+                                trackpadMode = false
+                                withAnimation(.easeInOut(duration: 0.18)) { showAppLauncher = true }
+                            },
+                            onToggleTrackpad: { trackpadMode.toggle() },
                             onBackspace: connection.keyboardActive ? { connection.sendBackspace { _ in } } : nil)
                     .frame(width: 0, height: 0)
                 // Navigation pad — circular ring matching the real Apple TV remote
@@ -620,26 +688,15 @@ struct RemoteControlView: View {
 // MARK: - Keyboard shortcuts
 
 /// Zero-size NSView that claims first-responder inside the remote layout so
-/// hardware keys dispatch to the connected Apple TV:
+/// hardware keys dispatch to the connected Apple TV. Which key does what is
+/// user-editable: every keyDown is resolved through `KeyBindingStore`
+/// (defaults in `KeyBindingStore.defaultBindings`, editor in
+/// `KeyboardShortcutsWindow.swift`).
 ///
-///   ↑ ↓ ← →     — D-pad
-///   return      — select (D-pad centre, hold for long-press)
-///   esc         — menu / back (hold for long-press)
-///   space       — play / pause
-///   ⌃A          — show app grid
-///   ⌃H          — home (hold for Control Center)
-///   ⌃M          — menu / back (hold long-press)
-///   ⌃P          — play / pause
-///   delete      — backspace (when ATV text field is focused)
-///   PgUp PgDn   — volume up / down
-///   ⇧↑ ⇧↓ ⇧← ⇧→ — trackpad swipe
+/// Fixed, not rebindable: Tab is swallowed, and bare Delete sends a backspace
+/// while the ATV has a text field focused.
 ///
-/// The letter shortcuts require Control because bare letters were too easy
-/// to fire accidentally when remote-pane focus drifted while the user was
-/// typing in another window.
-///
-/// Other ⌘/⌃/⌥ shortcuts pass through so app-level commands (⌘Q, ⌘W, ⌘,)
-/// keep working.
+/// Unbound chords pass through so app-level commands (⌘Q, ⌘W, ⌘,) keep working.
 private struct KeyCatcher: NSViewRepresentable {
     let onCommand: (RemoteCommand) -> Void
     var onLongCommand: (RemoteCommand) -> Void = { _ in }
@@ -649,6 +706,7 @@ private struct KeyCatcher: NSViewRepresentable {
     var onPressingChanged: (RemoteCommand, Bool) -> Void = { _, _ in }
     var onSwipe: (SwipeDirection) -> Void = { _ in }
     var onShowApps: () -> Void = {}
+    var onToggleTrackpad: () -> Void = {}
     var onBackspace: (() -> Void)? = nil
 
     func makeNSView(context: Context) -> NSView {
@@ -658,6 +716,7 @@ private struct KeyCatcher: NSViewRepresentable {
         v.onPressingChanged = onPressingChanged
         v.onSwipe = onSwipe
         v.onShowApps = onShowApps
+        v.onToggleTrackpad = onToggleTrackpad
         v.onBackspace = onBackspace
         return v
     }
@@ -668,6 +727,7 @@ private struct KeyCatcher: NSViewRepresentable {
         (nsView as? KeyCatcherView)?.onPressingChanged = onPressingChanged
         (nsView as? KeyCatcherView)?.onSwipe = onSwipe
         (nsView as? KeyCatcherView)?.onShowApps = onShowApps
+        (nsView as? KeyCatcherView)?.onToggleTrackpad = onToggleTrackpad
         (nsView as? KeyCatcherView)?.onBackspace = onBackspace
     }
 }
@@ -678,10 +738,11 @@ private final class KeyCatcherView: NSView {
     var onPressingChanged: (RemoteCommand, Bool) -> Void = { _, _ in }
     var onSwipe: (SwipeDirection) -> Void = { _ in }
     var onShowApps: () -> Void = {}
+    var onToggleTrackpad: () -> Void = {}
     var onBackspace: (() -> Void)? = nil
 
     /// Long-press tracking for keys whose UI buttons support a hold gesture:
-    /// Home (⌃H), Menu (⌃M and Esc), Select (Return/Enter). The first
+    /// Home, Menu, Select. The first
     /// non-repeat keyDown schedules a 0.4s DispatchWorkItem; if the user
     /// releases first we cancel it and fire `onCommand`, otherwise the work
     /// item fires `onLongCommand` and the eventual keyUp is consumed without
@@ -721,73 +782,43 @@ private final class KeyCatcherView: NSView {
         // and shift keyboard focus away from this view.
         if event.keyCode == 48 { return }
 
-        // `mods` excludes shift on purpose — shift is a modifier we own (for
-        // swipe shortcuts) but never combines with ⌘/⌃/⌥ in our bindings.
-        // Tracking it separately keeps the bail-out check below uncluttered.
-        let mods  = event.modifierFlags.intersection([.command, .control, .option])
-        let shift = event.modifierFlags.contains(.shift)
-
-        // ⇧↑↓←→ → trackpad swipe (plain shift only — no ⌘⇧, ⌃⇧, ⌥⇧).
-        if shift, mods.isEmpty {
-            switch event.keyCode {
-            case 126: onSwipe(.up);    return
-            case 125: onSwipe(.down);  return
-            case 123: onSwipe(.left);  return
-            case 124: onSwipe(.right); return
-            default:  break
-            }
-        }
-
-        // ⌃ + letter shortcuts. Bare letters used to fire commands but were
-        // too easy to send accidentally if remote-pane focus drifted while
-        // the user was typing elsewhere. Now require Control.
-        if mods == .control, !shift {
-            switch event.charactersIgnoringModifiers?.lowercased() {
-            case "a":
-                if !event.isARepeat { onShowApps() }
-                return
-            case "r":
-                return  // already on remote; consumed so AppKit doesn't beep
-            case "h":
-                handleHoldableKey(.home, event: event)
-                return
-            case "m":
-                handleHoldableKey(.menu, event: event)
-                return
-            case "p":
-                onCommand(.playPause)
-                return
-            default:
-                break  // any other ⌃-letter falls through to system handling
-            }
-        }
-
-        // Let other ⌘/⌃/⌥ shortcuts reach the menu bar and other handlers.
-        if !mods.isEmpty { super.keyDown(with: event); return }
+        let mods = event.modifierFlags.intersection(KeyChord.modifierMask)
 
         // Backspace while ATV has a text field focused — delete last character.
-        if event.keyCode == 51, let handler = onBackspace {
+        if event.keyCode == 51, mods.isEmpty, let handler = onBackspace {
             handler()
             return
         }
-        // Bare arrows / Return / Space / Esc / PgUp / PgDn.
-        if let cmd = bareCommand(for: event) {
-            // Return (select) and Esc (menu) support long-press —
-            // handleHoldableKey gates auto-repeat and schedules the timer.
-            if cmd == .select || cmd == .menu {
-                handleHoldableKey(cmd, event: event)
-                return
-            }
-            // Auto-repeat fires repeatedly — useful so holding ↑ scrolls
-            // a tvOS list smoothly.
-            onCommand(cmd)
+
+        guard let action = KeyBindingStore.shared.action(for: event) else {
+            // ⌃R means "back to remote" in the app grid; already there, so
+            // consume it rather than let AppKit beep.
+            if event.keyCode == 15, mods == .control { return }
+            super.keyDown(with: event)
             return
         }
-        super.keyDown(with: event)
+
+        switch action {
+        case .select: handleHoldableKey(.select, event: event)
+        case .menu:   handleHoldableKey(.menu, event: event)
+        case .home:   handleHoldableKey(.home, event: event)
+        case .showApps:
+            if !event.isARepeat { onShowApps() }
+        case .toggleTrackpad:
+            if !event.isARepeat { onToggleTrackpad() }
+        default:
+            // Auto-repeat fires repeatedly — useful so holding ↑ scrolls
+            // a tvOS list smoothly.
+            if let swipe = action.swipe {
+                onSwipe(swipe)
+            } else if let cmd = action.command {
+                onCommand(cmd)
+            }
+        }
     }
 
     /// Begin press tracking on the first non-repeat keyDown of a holdable
-    /// key (⌃H, ⌃M, Return, Esc). Auto-repeat keyDowns are no-ops — the
+    /// key (Home, Menu, Select). Auto-repeat keyDowns are no-ops — the
     /// release in `keyUp` is what fires `onCommand` or the work item what
     /// fires `onLongCommand`.
     private func handleHoldableKey(_ cmd: RemoteCommand, event: NSEvent) {
@@ -830,21 +861,33 @@ private final class KeyCatcherView: NSView {
         longPressItem = item
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: item)
     }
+}
 
-    /// Bare-modifier keys: arrows, Return, Space, Page Up/Down. Letters are
-    /// handled in the ⌃-letter branch above and are NOT returned here.
-    private func bareCommand(for event: NSEvent) -> RemoteCommand? {
-        switch event.keyCode {
-        case 126: return .up
-        case 125: return .down
-        case 123: return .left
-        case 124: return .right
-        case 36, 76: return .select          // return, keypad enter
-        case 53: return .menu               // escape
-        case 49: return .playPause           // space
-        case 116: return .volumeUp           // Page Up
-        case 121: return .volumeDown         // Page Down
-        default: return nil
+private extension RemoteAction {
+    /// HID button for actions that are a plain button press.
+    var command: RemoteCommand? {
+        switch self {
+        case .up:         return .up
+        case .down:       return .down
+        case .left:       return .left
+        case .right:      return .right
+        case .select:     return .select
+        case .menu:       return .menu
+        case .home:       return .home
+        case .playPause:  return .playPause
+        case .volumeUp:   return .volumeUp
+        case .volumeDown: return .volumeDown
+        default:          return nil
+        }
+    }
+
+    var swipe: SwipeDirection? {
+        switch self {
+        case .swipeUp:    return .up
+        case .swipeDown:  return .down
+        case .swipeLeft:  return .left
+        case .swipeRight: return .right
+        default:          return nil
         }
     }
 }

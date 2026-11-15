@@ -10,7 +10,7 @@ A macOS app that discovers and controls Apple TVs on the local network via the *
 - **Keyboard text input** — type into active Apple TV text fields from the Mac
 - **`atv` CLI** — scriptable control from the terminal or shell scripts
 - **Auto-reconnect** — reconnects automatically when the Apple TV becomes reachable
-- **Keyboard shortcuts** — `⌃A` to open app grid, `⌃R` to return to remote, arrow keys to navigate apps; full list in the menu-bar icon's right-click menu
+- **Keyboard shortcuts** — `A` to open app grid, `⌃R` to return to remote, arrow keys to navigate apps; full list in the menu-bar icon's right-click menu
 
 ## Screenshots
 
@@ -158,18 +158,29 @@ atv --standalone --device "Living Room" l
 |-----|--------|
 | `↑ ↓ ← →` | D-pad up / down / left / right |
 | `⇧ ↑ ↓ ← →` | Trackpad swipe up / down / left / right |
-| `Return` | Select _(hold for long-press)_ |
-| `Esc` | Menu / Back _(hold for long-press)_ |
+| `Return` / `Enter` | Select _(hold for long-press)_ |
+| `Delete` | Menu / Back _(hold for long-press)_; deletes the last character instead while an Apple TV text field is active |
+| `Esc` | Home _(hold for Control Center)_ |
 | `Space` | Play / Pause |
-| `⌃ A` | Open app launcher |
+| `=` / `-` | Volume up / down |
+| `A` | Open app launcher |
+| `\` | Trackpad mode on / off |
 | `⌃ R` | Return to remote |
-| `⌃ H` | Home _(hold for Control Center)_ |
-| `⌃ M` | Menu / Back _(hold for long-press)_ |
-| `⌃ P` | Play / Pause |
-| `Page Up` / `Page Down` | Volume up / down |
-| `⌫ Backspace` | Delete last character _(when Apple TV text field is active)_ |
 
-The letter shortcuts require Control so accidental key-presses don't fire commands at the Apple TV when remote-pane focus has drifted while you're typing elsewhere. The full list is also reachable in-app via **Keyboard Shortcuts…** in the menu-bar icon's right-click menu.
+These are the defaults. Every binding except `⌃ R` can be changed in **Keyboard & Trackpad…** (menu-bar icon's right-click menu): click **+** on an action and press a key. `⌘` chords and `Tab` can't be bound.
+
+### Trackpad mode
+
+`\` (or the hand icon in the remote pane's status bar) turns the trackpad into the Siri Remote touch surface. The pointer is parked while the mode is on.
+
+| Gesture | Action |
+|---------|--------|
+| One-finger slide in the top / bottom / left / right area | D-pad up / down / left / right _(keeps repeating as you slide)_ |
+| Two-finger slide up / down | Clickpad ring anticlockwise / clockwise |
+| Click | Select |
+| Right-click or `\` | Leave trackpad mode |
+
+A slide starting in the centre of the trackpad follows the slide direction instead. **Keyboard & Trackpad…** can switch all slides to follow direction.
 
 ### App launcher pane
 
@@ -178,7 +189,7 @@ The letter shortcuts require Control so accidental key-presses don't fire comman
 | `↑ ↓ ← →` | Navigate app grid |
 | `Return` | Launch selected app |
 | `Tab` | Focus search field |
-| `⌃R` / `⌃A` | Return to remote |
+| `⌃R` / `A` | Return to remote (`A` only outside the search field) |
 
 ## Credential Storage
 
@@ -206,7 +217,9 @@ Pairing credentials (Ed25519 long-term key pair + Apple TV public key) are store
 | `MenuBarController.swift` | Menu bar status item, popover, right-click menu |
 | `AppIconCache.swift` | Fetches and caches app icons from iTunes + bundled system icons |
 | `KeyboardNotificationManager.swift` | Manages keyboard-input notifications for Apple TV remote requests |
-| `KeyboardShortcutsWindow.swift` | In-app keyboard shortcuts reference window (menu-bar right-click → Keyboard Shortcuts…) |
+| `KeyboardShortcutsWindow.swift` | Key-binding editor + trackpad options window (menu-bar right-click → Keyboard & Trackpad…) |
+| `KeyBindings.swift` | `RemoteAction`, `KeyChord`, and `KeyBindingStore` (user key bindings, persisted in UserDefaults) |
+| `TrackpadSurface.swift` | Trackpad mode: raw trackpad touches → D-pad presses and ring rotation |
 | `PopoverActivationGuard.swift` | Suppresses the first tap that activates the popover window |
 | `VisualEffectBackground.swift` | NSVisualEffectView wrapper for SwiftUI translucency |
 | `CompanionConnection.swift` | App-layer orchestrator: TCP connect/disconnect, WoL, pairing delegation, `@Published` state for SwiftUI |

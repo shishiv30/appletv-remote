@@ -32,7 +32,10 @@ final class MenuBarController: NSObject, NSPopoverDelegate, NSMenuDelegate {
         statusItem = item
         guard let button = item.button else { return }
 
-        let img = NSImage(systemSymbolName: "appletv.remote.gen2", accessibilityDescription: nil)
+        // The Apple TV box glyph: the slim remote outline was easy to
+        // overlook among other menu bar icons.
+        let img = NSImage(systemSymbolName: "appletv.fill", accessibilityDescription: "Apple TV Remote")
+                ?? NSImage(systemSymbolName: "appletv.remote.gen2", accessibilityDescription: "Apple TV Remote")
                 ?? NSImage(systemSymbolName: "tv.fill", accessibilityDescription: nil)
                 ?? NSImage(systemSymbolName: "tv",      accessibilityDescription: nil)
         img?.isTemplate = true
@@ -150,7 +153,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate, NSMenuDelegate {
         menu.addItem(show)
 
         // Keyboard Shortcuts
-        let shortcuts = NSMenuItem(title: "Keyboard Shortcuts…",
+        let shortcuts = NSMenuItem(title: "Keyboard & Trackpad…",
                                    action: #selector(showKeyboardShortcuts), keyEquivalent: "")
         shortcuts.target = self
         menu.addItem(shortcuts)

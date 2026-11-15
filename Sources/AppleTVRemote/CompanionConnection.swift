@@ -696,6 +696,19 @@ final class CompanionConnection: ObservableObject {
         session?.sendSwipe(direction)
     }
 
+    /// Ring (circular jog) gesture. Positive degrees = clockwise. The finger
+    /// goes down on the first rotation and lifts on `endRing()`.
+    func rotateRing(byDegrees delta: Double) {
+        guard state == .connected, let session else { return }
+        session.beginRing()
+        session.rotateRing(byDegrees: delta)
+    }
+
+    func endRing() {
+        session?.endRing()
+        requestNowPlayingRefresh()
+    }
+
     func sendText(_ text: String, completion: @escaping (Error?) -> Void) {
         guard state == .connected else { completion(TextInputError.notConnected); return }
         guard keyboardActive else { completion(TextInputError.noActiveTextField); return }

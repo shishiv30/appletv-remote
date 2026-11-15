@@ -252,8 +252,12 @@ private struct KeyMonitor: NSViewRepresentable {
                     let code = event.keyCode
                     let ctrl = event.modifierFlags.contains(.control)
                     // ⌃A / ⌃R dismiss the launcher (symmetric with ⌃A to show it)
-                    if ctrl, let ch = event.charactersIgnoringModifiers?.lowercased(),
-                       ch == "a" || ch == "r" {
+                    // …as does whatever key is bound to "Apps grid".
+                    // A bare-key binding must not fire while typing in search.
+                    let typing = (event.window?.firstResponder as? NSText) != nil && !ctrl
+                    let isShowApps = !typing && KeyBindingStore.shared.action(for: event) == .showApps
+                    if isShowApps || ctrl, let ch = event.charactersIgnoringModifiers?.lowercased(),
+                       isShowApps || ch == "a" || ch == "r" {
                         DispatchQueue.main.async { self?.onKey?(15) }  // 15 = dismiss
                         return nil
                     }
