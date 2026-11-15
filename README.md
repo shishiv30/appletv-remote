@@ -4,8 +4,10 @@ A macOS app that discovers and controls Apple TVs on the local network via the *
 
 ## Features
 
-- **Menu bar app** — lives in the menu bar; popover remote for quick access
+- **Menu bar app** — lives in the menu bar; popover remote for quick access, with the same keyboard shortcuts as the main window
 - **Main window** — collapsible device sidebar + remote control pane with D-pad, playback, volume, now-playing
+- **Customizable key bindings** — remap every remote action to the keys you prefer in **Keyboard & Trackpad…**
+- **Trackpad mode** — use the MacBook trackpad as the Siri Remote touch surface (slide for D-pad, two fingers for the ring, click to select)
 - **App launcher** — browse and launch apps installed on the Apple TV
 - **Keyboard text input** — type into active Apple TV text fields from the Mac
 - **`atv` CLI** — scriptable control from the terminal or shell scripts
@@ -13,6 +15,32 @@ A macOS app that discovers and controls Apple TVs on the local network via the *
 - **Keyboard shortcuts** — `A` to open app grid, `⌃R` to return to remote, arrow keys to navigate apps; full list in the menu-bar icon's right-click menu
 
 ## Screenshots
+
+### Main window
+
+The device sidebar on the left, the remote on the right. The status bar at the top holds the keyboard-input, trackpad-mode, and app-launcher buttons.
+
+<img src="screenshots/overview.png" width="420" alt="Main window with device sidebar and remote">
+
+### Menu bar popover
+
+Click the menu bar icon for a compact remote. Keyboard shortcuts work here too: arrow keys, `Return`, `Delete`, `Esc`, `Space`, and the rest of your bindings drive the Apple TV while the popover is open, and the buttons flash to confirm each key press. The `A` (apps grid) key opens the main window on the app launcher, since the popover has no grid of its own.
+
+<img src="screenshots/popover.png" width="300" alt="Menu bar popover remote">
+
+### Keyboard & Trackpad settings
+
+Right-click the menu bar icon and choose **Keyboard & Trackpad…**. Click **+** next to an action and press a key to add a binding; click **×** to remove one; **Reset to Defaults** restores the stock layout. The window also lists the fixed keys and the trackpad gestures.
+
+<img src="screenshots/keymapping.png" width="420" alt="Keyboard & Trackpad settings window">
+
+### Trackpad mode
+
+Press `\` or click the hand icon in the status bar (highlighted below). The trackpad becomes the Siri Remote touch surface and an on-screen hint shows the gestures. Right-click or press `\` again to leave.
+
+<img src="screenshots/trackpad-mode.png" width="420" alt="Trackpad mode active in the main window">
+
+### More views
 
 | Remote (`remote.png`) | Remote + sidebar (`remote with sidebar.png`) |
 |--------|-----------------|
@@ -153,6 +181,8 @@ atv --standalone --device "Living Room" l
 ## Keyboard Controls
 
 ### Remote control pane
+
+These keys work in the main window's remote pane and in the menu bar popover. In the popover, `A` opens the main window on the app launcher, and `\` (trackpad mode) has no effect because trackpad mode lives in the main window.
 
 | Key | Action |
 |-----|--------|
