@@ -37,6 +37,13 @@ struct RemoteControlView: View {
     @State private var keyFlashSwipe: SwipeDirection?
     static let keyFlashDuration: TimeInterval = 0.15
 
+    /// Posted by the menu-bar popover when its "Apps grid" key fires: the
+    /// popover has no grid of its own, so it raises the main window and asks
+    /// this pane to switch to the launcher.
+    static let showAppLauncherNotification = Notification.Name(
+        "com.adhir.appletv-remote.showAppLauncher"
+    )
+
     var body: some View {
         VStack(spacing: 0) {
             statusBar
@@ -140,6 +147,10 @@ struct RemoteControlView: View {
         ) { _ in
             KeyboardNotificationManager.shared.cancelAttention()
             showKeyboardInput = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Self.showAppLauncherNotification)) { _ in
+            trackpadMode = false
+            showAppLauncher = true
         }
     }
 
@@ -697,7 +708,10 @@ struct RemoteControlView: View {
 /// while the ATV has a text field focused.
 ///
 /// Unbound chords pass through so app-level commands (⌘Q, ⌘W, ⌘,) keep working.
-private struct KeyCatcher: NSViewRepresentable {
+///
+/// Shared by the main window's remote pane and the menu-bar popover — any
+/// window that should drive the Apple TV from the keyboard needs one.
+struct KeyCatcher: NSViewRepresentable {
     let onCommand: (RemoteCommand) -> Void
     var onLongCommand: (RemoteCommand) -> Void = { _ in }
     /// Fires (cmd, true) on the first non-repeat keyDown of a long-press-able
@@ -732,7 +746,7 @@ private struct KeyCatcher: NSViewRepresentable {
     }
 }
 
-private final class KeyCatcherView: NSView {
+final class KeyCatcherView: NSView {
     var onCommand: (RemoteCommand) -> Void = { _ in }
     var onLongCommand: (RemoteCommand) -> Void = { _ in }
     var onPressingChanged: (RemoteCommand, Bool) -> Void = { _, _ in }

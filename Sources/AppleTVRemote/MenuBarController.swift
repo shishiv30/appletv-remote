@@ -104,7 +104,10 @@ final class MenuBarController: NSObject, NSPopoverDelegate, NSMenuDelegate {
             DispatchQueue.main.async {
                 let popWin = pop.contentViewController?.view.window
                 popWin?.makeKey()
-                popWin?.makeFirstResponder(nil)
+                // Hand focus to the popover's KeyCatcherView so hardware keys
+                // drive the Apple TV. (nil when the disconnected view is up.)
+                popWin?.makeFirstResponder(
+                    pop.contentViewController?.view.firstDescendant(ofType: KeyCatcherView.self))
                 // Previously we orderOut'd every other window to stop the main
                 // window from taking over on popover dismiss, but that hid the
                 // main window whenever the user clicked the menu-bar icon —
@@ -259,6 +262,10 @@ struct MenuBarRemoteView: View {
     @EnvironmentObject var connection:  CompanionConnection
     @EnvironmentObject var reconnector: AutoReconnector
 
+    /// Button currently flashed by a keyboard shortcut — same press visual
+    /// the main window's remote pane uses.
+    @State private var keyFlashCommand: RemoteCommand?
+
     var body: some View {
         Group {
             if connection.state == .connected ||
@@ -275,6 +282,25 @@ struct MenuBarRemoteView: View {
 
     private var connectedView: some View {
         VStack(spacing: 14) {
+            // Same key handling as the main window's remote pane. Without
+            // this the popover window has no first responder that understands
+            // the key bindings and every key press is dropped.
+            KeyCatcher(onCommand: { cmd in connection.send(cmd); flashKey(cmd) },
+                       onLongCommand: { cmd in connection.sendLongPress(cmd) },
+                       onPressingChanged: { cmd, pressing in
+                           if pressing {
+                               keyFlashCommand = cmd
+                           } else if keyFlashCommand == cmd {
+                               keyFlashCommand = nil
+                           }
+                       },
+                       onSwipe: { dir in connection.sendSwipe(dir) },
+                       onShowApps: { openAppGrid() },
+                       // Trackpad mode lives in the main window only.
+                       onToggleTrackpad: {},
+                       onBackspace: connection.keyboardActive ? { connection.sendBackspace { _ in } } : nil)
+                .frame(width: 0, height: 0)
+
             Text(connection.currentDevice?.name ?? "Apple TV")
                 .font(.subheadline.weight(.semibold))
                 .lineLimit(1)
@@ -285,24 +311,32 @@ struct MenuBarRemoteView: View {
                     .fill(.quaternary)
                     .frame(width: 148, height: 148)
                 VStack(spacing: 2) {
-                    RemoteButton(label: "chevron.up",    action: { connection.send(.up) })
+                    RemoteButton(label: "chevron.up",    action: { connection.send(.up) },
+                                 flash: keyFlashCommand == .up)
                     HStack(spacing: 2) {
-                        RemoteButton(label: "chevron.left",  action: { connection.send(.left) })
-                        RemoteButton(label: "circle.fill",    action: { connection.send(.select) }, size: 48)
-                        RemoteButton(label: "chevron.right", action: { connection.send(.right) })
+                        RemoteButton(label: "chevron.left",  action: { connection.send(.left) },
+                                 flash: keyFlashCommand == .left)
+                        RemoteButton(label: "circle.fill",    action: { connection.send(.select) }, size: 48,
+                                     flash: keyFlashCommand == .select)
+                        RemoteButton(label: "chevron.right", action: { connection.send(.right) },
+                                 flash: keyFlashCommand == .right)
                     }
-                    RemoteButton(label: "chevron.down",  action: { connection.send(.down) })
+                    RemoteButton(label: "chevron.down",  action: { connection.send(.down) },
+                                 flash: keyFlashCommand == .down)
                 }
             }
 
             HStack(spacing: 28) {
-                LabeledRemoteButton(sfSymbol: "chevron.backward", label: "Back") {
+                LabeledRemoteButton(sfSymbol: "chevron.backward", label: "Back",
+                                    flash: keyFlashCommand == .menu) {
                     connection.send(.menu)
                 }
-                LabeledRemoteButton(sfSymbol: "playpause.fill", label: "Play/Pause") {
+                LabeledRemoteButton(sfSymbol: "playpause.fill", label: "Play/Pause",
+                                    flash: keyFlashCommand == .playPause) {
                     connection.send(.playPause)
                 }
-                LabeledRemoteButton(sfSymbol: "app.fill", label: "Home") {
+                LabeledRemoteButton(sfSymbol: "app.fill", label: "Home",
+                                    flash: keyFlashCommand == .home) {
                     connection.send(.home)
                 } longPressAction: {
                     connection.sendLongPress(.home)
@@ -310,10 +344,12 @@ struct MenuBarRemoteView: View {
             }
 
             HStack(spacing: 20) {
-                LabeledRemoteButton(sfSymbol: "speaker.minus.fill", label: "Vol −") {
+                LabeledRemoteButton(sfSymbol: "speaker.minus.fill", label: "Vol −",
+                                    flash: keyFlashCommand == .volumeDown) {
                     connection.send(.volumeDown)
                 }
-                LabeledRemoteButton(sfSymbol: "speaker.plus.fill", label: "Vol +") {
+                LabeledRemoteButton(sfSymbol: "speaker.plus.fill", label: "Vol +",
+                                    flash: keyFlashCommand == .volumeUp) {
                     connection.send(.volumeUp)
                 }
             }
@@ -344,5 +380,33 @@ struct MenuBarRemoteView: View {
 
     private func openMainWindow() {
         MenuBarController.shared.openMainWindow()
+    }
+
+    /// "Apps grid" key: the popover has no grid, so show it in the main window.
+    private func openAppGrid() {
+        MenuBarController.shared.openMainWindow()
+        // After openMainWindow's own async hop, so a freshly created window's
+        // remote pane is already listening.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            NotificationCenter.default.post(
+                name: RemoteControlView.showAppLauncherNotification, object: nil)
+        }
+    }
+
+    private func flashKey(_ cmd: RemoteCommand) {
+        keyFlashCommand = cmd
+        DispatchQueue.main.asyncAfter(deadline: .now() + RemoteControlView.keyFlashDuration) {
+            if keyFlashCommand == cmd { keyFlashCommand = nil }
+        }
+    }
+}
+
+private extension NSView {
+    /// Depth-first search for the first subview of the given type.
+    func firstDescendant<T: NSView>(ofType type: T.Type) -> T? {
+        for sub in subviews {
+            if let hit = sub as? T ?? sub.firstDescendant(ofType: type) { return hit }
+        }
+        return nil
     }
 }
